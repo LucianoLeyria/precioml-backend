@@ -1,0 +1,10 @@
+{
+  "name": "precioml-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "mercadopago": "^2.4.0",
+    "@vercel/kv": "^2.0.0"
+  }
+}
