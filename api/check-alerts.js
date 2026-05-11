@@ -1,6 +1,6 @@
 // api/check-alerts.js
 // Cron job horario: chequea alertas contra la API de MercadoLibre y envía emails
-// POST /api/check-alerts  — Header: Authorization: Bearer CRON_SECRET
+// POST /api/check-alerts  — Header: Authorization: Bearer CRON_SECRET 
 
 import { kv } from '@vercel/kv';
 
