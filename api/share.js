@@ -30,7 +30,8 @@ export default async function handler(req, res) {
       createdAt: Date.now(),
     };
     await kv.set(`share:${slug}`, shareData, { ex: 60 * 60 * 24 * 30 });
-    const shareUrl = `${process.env.APP_URL}/api/s/${slug}`;
+        const host = req.headers['x-forwarded-host'] || req.headers.host;
+        const shareUrl = `https://${host}/api/s/${slug}`;
     return res.status(200).json({ slug, shareUrl });
   } catch (err) {
     return res.status(500).json({ error: 'Error generando el link' });
