@@ -3,5 +3,9 @@
     "api/*.js": {
       "maxDuration": 10
     }
-  }
+  },
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/$1" }
+  ]
 }
