@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PrecioML — Admin Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"><\/script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    .topbar { background: #1e293b; border-bottom: 1px solid #334155; padding: 16px 32px; display: flex; align-items: center; gap: 12px; }
+    .topbar h1 { font-size: 20px; font-weight: 700; }
+    .topbar .badge { background: #3483fa; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+    .auth-screen { max-width: 400px; margin: 80px auto; background: #1e293b; border-radius: 16px; padding: 32px; border: 1px solid #334155; }
+    .auth-screen h2 { font-size: 18px; margin-bottom: 8px; }
+    .auth-screen p { font-size: 13px; color: #64748b; margin-bottom: 20px; }
+    .auth-screen input { width: 100%; background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 10px 14px; border-radius: 8px; font-size: 14px; margin-bottom: 12px; outline: none; }
+    .auth-screen input:focus { border-color: #3483fa; }
+    .auth-screen button { width: 100%; background: #3483fa; color: #fff; border: none; padding: 11px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .auth-screen button:hover { background: #2563eb; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 32px; }
+    .section-title { font-size: 13px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 16px; margin-top: 32px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+    .card { background: #1e293b; border-radius: 12px; padding: 20px 24px; border: 1px solid #334155; }
+    .card .label { font-size: 12px; color: #64748b; margin-bottom: 6px; }
+    .card .value { font-size: 32px; font-weight: 700; }
+    .card .sub { font-size: 12px; color: #64748b; margin-top: 4px; }
+    .card.green .value { color: #22c55e; }
+    .card.blue .value { color: #3483fa; }
+    .card.orange .value { color: #f59e0b; }
+    .card.red .value { color: #ef4444; }
+    .chart-box { background: #1e293b; border-radius: 12px; padding: 24px; border: 1px solid #334155; margin-bottom: 16px; }
+    .chart-box h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+    .chart-box canvas { max-height: 200px; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 8px 12px; color: #64748b; font-weight: 600; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid #334155; }
+    td { padding: 10px 12px; border-bottom: 1px solid #1e293b; }
+    tr:last-child td { border-bottom: none; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+    .pill.green { background: rgba(34,197,94,.15); color: #22c55e; }
+    .pill.red { background: rgba(239,68,68,.15); color: #ef4444; }
+    .pill.blue { background: rgba(52,131,250,.15); color: #3483fa; }
+    .pill.orange { background: rgba(245,158,11,.15); color: #f59e0b; }
+    .refresh-btn { background: #334155; color: #e2e8f0; border: none; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; margin-left: auto; display: block; margin-bottom: 16px; }
+    .refresh-btn:hover { background: #475569; }
+    .loading { text-align: center; padding: 80px; color: #64748b; }
+    .error-msg { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3); color: #ef4444; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+  <\/style>
+<\/head>
+<body>
+<div class="topbar">
+  <span style="font-size:22px">&#128200;<\/span>
+  <h1>PrecioML<\/h1>
+  <span class="badge">Admin<\/span>
+  <span style="margin-left:auto;font-size:13px;color:#64748b" id="gen-at"><\/span>
+<\/div>
+<div class="auth-screen" id="auth-screen">
+  <h2>&#128272; Acceso admin<\/h2>
+  <p>Ingresa el ADMIN_SECRET configurado en Vercel.<\/p>
+  <input type="password" id="secret-input" placeholder="ADMIN_SECRET" />
+  <button onclick="login()">Entrar<\/button>
+  <div id="auth-error" style="margin-top:12px;font-size:13px;color:#ef4444;display:none"><\/div>
+<\/div>
+<div class="container" id="dashboard" style="display:none">
+  <div id="error-banner" class="error-msg" style="display:none"><\/div>
+  <button class="refresh-btn" onclick="loadStats()">&#128260; Actualizar<\/button>
+  <div id="content" class="loading">Cargando estadisticas...<\/div>
+<\/div>
+<script>
+const BASE_URL = 'https://precioml-backend.vercel.app';
+let SECRET = '';
+function login() {
+  SECRET = document.getElementById('secret-input').value.trim();
+  if (!SECRET) return;
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  loadStats();
+}
+document.getElementById('secret-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') login();
+});
+async function loadStats() {
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading">Cargando estadisticas...</div>';
+  try {
+    const res = await fetch(BASE_URL + '/api/admin-stats', {
+      headers: { 'Authorization': 'Bearer ' + SECRET }
+    });
+    if (res.status === 401) {
+      document.getElementById('auth-error').textContent = 'Secret incorrecto.';
+      document.getElementById('auth-error').style.display = 'block';
+      document.getElementById('auth-screen').style.display = 'block';
+      document.getElementById('dashboard').style.display = 'none';
+      return;
+    }
+    if (!res.ok) throw new Error('Error ' + res.status);
+    const data = await res.json();
+    render(data);
+  } catch (err) {
+    content.innerHTML = '<div class="error-msg">Error: ' + err.message + '</div>';
+  }
+}
+function fmt(ts) {
+  if (!ts) return '-';
+  return new Date(ts).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+function methodPill(method) {
+  const colors = { mercadopago: 'blue', promo: 'orange', test: 'orange', lifetime: 'green', unknown: 'red' };
+  return '<span class="pill ' + (colors[method] || 'blue') + '">' + method + '</span>';
+}
+function render(data) {
+  document.getElementById('gen-at').textContent = 'Actualizado: ' + new Date(data.generatedAt).toLocaleTimeString('es-AR');
+  const { installs, premium, codes, recentActivations } = data;
+  const convRate = installs.total > 0 ? ((premium.active / installs.total) * 100).toFixed(1) : 0;
+  let html = '';
+  html += '<div class="section-title">Resumen general</div>';
+  html += '<div class="cards">' +
+    '<div class="card blue"><div class="label">Instalaciones unicas</div><div class="value">' + installs.total.toLocaleString('es-AR') + '</div><div class="sub">dispositivos conocidos</div></div>' +
+    '<div class="card green"><div class="label">Premium activos</div><div class="value">' + premium.active + '</div><div class="sub">de ' + premium.total + ' totales</div></div>' +
+    '<div class="card orange"><div class="label">Conversion</div><div class="value">' + convRate + '%</div><div class="sub">installs a premium activo</div></div>' +
+    '<div class="card red"><div class="label">Premium vencidos</div><div class="value">' + premium.expired + '</div><div class="sub">sin renovar</div></div>' +
+  '</div>';
+  const last14 = installs.byDay.slice(-14);
+  html += '<div class="section-title">Instalaciones nuevas (ultimos 14 dias)</div>';
+  html += '<div class="chart-box"><canvas id="chart-installs"></canvas></div>';
+  html += '<div class="two-col">';
+  html += '<div class="chart-box"><h3>Activaciones por metodo</h3>';
+  if (Object.keys(premium.methodBreakdown).length === 0) {
+    html += '<p style="color:#64748b;font-size:13px">Sin datos aun</p>';
+  } else {
+    html += '<canvas id="chart-methods"></canvas>';
+  }
+  html += '</div>';
+  html += '<div class="chart-box"><h3>Codigos promo</h3>';
+  if (codes.length === 0) {
+    html += '<p style="color:#64748b;font-size:13px">No hay codigos creados</p>';
+  } else {
+    html += '<table><thead><tr><th>Codigo</th><th>Usados</th><th>Limite</th></tr></thead><tbody>';
+    codes.forEach(function(c) {
+      const pct = c.maxUses < 999 ? Math.round((c.usedCount / c.maxUses) * 100) : null;
+      html += '<tr><td style="font-family:monospace;font-weight:600">' + c.code + '</td><td><span class="pill ' + (c.usedCount > 0 ? 'green' : 'blue') + '">' + c.usedCount + '</span></td><td>' + (c.maxUses >= 999 ? 'ilimitado' : c.maxUses + (pct !== null ? ' (' + pct + '%)' : '')) + '</td></tr>';
+    });
+    html += '</tbody></table>';
+  }
+  html += '</div></div>';
+  html += '<div class="section-title">Ultimas activaciones premium</div>';
+  html += '<div class="chart-box"><table><thead><tr><th>ID</th><th>Email</th><th>Metodo</th><th>Activado</th><th>Vence</th><th>Estado</th></tr></thead><tbody>';
+  if (recentActivations.length === 0) {
+    html += '<tr><td colspan="6" style="color:#64748b;text-align:center">Sin activaciones aun</td></tr>';
+  } else {
+    recentActivations.slice(0, 20).forEach(function(u) {
+      html += '<tr><td style="font-family:monospace;color:#64748b">' + u.id + '</td><td>' + (u.email || '<span style="color:#475569">-</span>') + '</td><td>' + methodPill(u.method) + '</td><td>' + fmt(u.activatedAt) + '</td><td>' + fmt(u.expiresAt) + '</td><td><span class="pill ' + (u.active ? 'green' : 'red') + '">' + (u.active ? 'Activo' : 'Vencido') + '</span></td></tr>';
+    });
+  }
+  html += '</tbody></table></div>';
+  document.getElementById('content').innerHTML = html;
+  new Chart(document.getElementById('chart-installs'), {
+    type: 'bar',
+    data: {
+      labels: last14.map(function(d) { return d.date.slice(5); }),
+      datasets: [{ label: 'Nuevas instalaciones', data: last14.map(function(d) { return d.count; }), backgroundColor: '#3483fa', borderRadius: 4 }]
+    },
+    options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } }, y: { ticks: { color: '#64748b', stepSize: 1 }, grid: { color: '#334155' }, beginAtZero: true } } }
+  });
+  if (document.getElementById('chart-methods')) {
+    const methodLabels = Object.keys(premium.methodBreakdown);
+    const methodColors = { mercadopago: '#3483fa', promo: '#f59e0b', test: '#f59e0b', lifetime: '#22c55e', unknown: '#ef4444' };
+    new Chart(document.getElementById('chart-methods'), {
+      type: 'doughnut',
+      data: {
+        labels: methodLabels,
+        datasets: [{ data: methodLabels.map(function(k) { return premium.methodBreakdown[k]; }), backgroundColor: methodLabels.map(function(k) { return methodColors[k] || '#64748b'; }), borderWidth: 0 }]
+      },
+      options: { plugins: { legend: { labels: { color: '#e2e8f0', font: { size: 12 } } } } }
+    });
+  }
+}
+<\/script>
+<\/body>
+<\/html>
