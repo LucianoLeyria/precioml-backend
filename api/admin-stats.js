@@ -3,8 +3,8 @@
 import { Redis } from '@upstash/redis';
 
 const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
 });
 
 export default async function handler(req, res) {
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     const dailyKeys = [];
     for (let i = 29; i >= 0; i--) {
       const d = new Date(now - i * 86400000).toISOString().slice(0, 10);
-      dailyKeys.push(`pml:installs:daily:${d}`);
+      dailyKeys.push('pml:installs:daily:' + d);
     }
     const dailyCounts = await Promise.all(dailyKeys.map(k => redis.get(k)));
     const installsByDay = dailyKeys.map((k, i) => ({
@@ -37,29 +37,29 @@ export default async function handler(req, res) {
       count: parseInt(dailyCounts[i] || '0', 10),
     }));
 
-    const premiumExpiries = await redis.zrangebyscore(
-      'pml:premium:expiries', '-inf', '+inf', { withScores: true }
+    const premiumEntries = await redis.zrange(
+      'pml:premium:expiries', '-inf', '+inf', { byScore: true, withScores: true }
     );
 
     let activePremium = 0;
     let expiredPremium = 0;
     const recentActivations = [];
-    const premiumIds = [];
 
-    for (let i = 0; i < premiumExpiries.length; i += 2) {
-      premiumIds.push({ id: premiumExpiries[i], score: Number(premiumExpiries[i + 1]) });
-    }
+    const premiumIds = (premiumEntries || []).map(e =>
+      typeof e === 'object' && e.member !== undefined
+        ? { id: e.member, score: Number(e.score) }
+        : null
+    ).filter(Boolean);
 
     const premiumDataList = await Promise.all(
-      premiumIds.map(({ id }) => redis.get(`pml:premium:${id}`))
+      premiumIds.map(({ id }) => redis.get('pml:premium:' + id))
     );
 
     premiumIds.forEach(({ id, score }, idx) => {
       const raw = premiumDataList[idx];
       if (!raw) return;
       const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      if (score > now) activePremium++;
-      else expiredPremium++;
+      if (score > now) { activePremium++; } else { expiredPremium++; }
       recentActivations.push({
         id: id.substring(0, 8) + '…',
         email: data.email || null,
@@ -75,22 +75,21 @@ export default async function handler(req, res) {
 
     const codeKeys = await redis.keys('pml:code:*');
     const codeNames = [...new Set(
-      codeKeys.filter(k => !k.includes(':used')).map(k => k.replace('pml:code:', ''))
+      (codeKeys || []).filter(k => !k.includes(':used')).map(k => k.replace('pml:code:', ''))
     )];
 
     const codeStats = await Promise.all(
       codeNames.map(async (code) => {
         const [data, usedCount] = await Promise.all([
-          redis.hgetall(`pml:code:${code}`),
-          redis.scard(`pml:code:${code}:used`),
+          redis.hgetall('pml:code:' + code),
+          redis.scard('pml:code:' + code + ':used'),
         ]);
         return { code, maxUses: parseInt(data?.maxUses || '999', 10), usedCount: usedCount || 0 };
       })
     );
 
     const methodBreakdown = recentActivations.reduce((acc, u) => {
-      acc[u.method] = (acc[u.method] || 0) + 1;
-      return acc;
+      acc[u.method] = (acc[u.method] || 0) + 1; return acc;
     }, {});
 
     return res.status(200).json({
