@@ -71,6 +71,8 @@ tr:last-child td{border-bottom:none}
 .alert-grid .ag-item:last-child{border-right:none}
 .alert-grid .ag-val{font-size:30px;font-weight:700;color:#2dd4bf}
 .alert-grid .ag-lbl{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-top:4px}
+.email-search{background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:7px 12px;border-radius:6px;font-size:13px;width:260px;outline:none}
+.email-search:focus{border-color:#3483fa}
 </style>
 </head>
 <body>
@@ -128,6 +130,13 @@ function fmt(ts){if(!ts)return '—';return new Date(ts).toLocaleDateString('es-
 function ars(n){if(n===null||n===undefined)return '—';return '$'+Math.round(n).toLocaleString('es-AR');}
 function na(v,sfx){return v===null||v===undefined?'<span class="na">sin datos<\/span>':v+(sfx||'');}
 function mp(method){var m={mercadopago:'blue',promo:'orange',test:'orange',lifetime:'purple',unknown:'grey'};return '<span class="pill '+(m[method]||'blue')+'">'+method+'<\/span>';}
+
+function filterEmails(){
+  var q=document.getElementById('email-filter').value.toLowerCase();
+  document.querySelectorAll('.email-row').forEach(function(r){
+    r.style.display=r.cells[0].textContent.toLowerCase().includes(q)?'':'none';
+  });
+}
 
 function setDays(d){
   DAYS=d;
@@ -218,6 +227,24 @@ function render(data){
     h+='<\/tbody><\/table>';
   }
   h+='<\/div>';
+
+  // Emails registrados
+  var emails=data.registeredEmails||[];
+  h+='<div class="section-title">Emails registrados ('+emails.length+')<\/div>';
+  if(emails.length===0){
+    h+='<div class="box"><p style="color:#64748b;font-size:13px">Sin emails registrados aún<\/p><\/div>';
+  }else{
+    h+='<div class="box">';
+    h+='<div style="margin-bottom:12px"><input id="email-filter" class="email-search" oninput="filterEmails()" placeholder="Buscar email..."/><\/div>';
+    h+='<table><thead><tr><th>Email<\/th><th>Fuente<\/th><\/tr><\/thead><tbody>';
+    emails.forEach(function(e){
+      var src=e.sources.map(function(s){
+        return '<span class="pill '+(s==='premium'?'green':'blue')+'">'+s+'<\/span>';
+      }).join(' ');
+      h+='<tr class="email-row"><td style="font-size:13px">'+e.email+'<\/td><td>'+src+'<\/td><\/tr>';
+    });
+    h+='<\/tbody><\/table><\/div>';
+  }
 
   h+='<div class="section-title">Últimas activaciones premium<\/div>';
   h+='<div class="box"><table><thead><tr>'+
@@ -399,8 +426,18 @@ export default async function handler(req, res) {
       })
     );
 
+    // ── Alertas + Emails ──────────────────────────────────────────────
     let totalActiveAlerts = 0, alertsTriggeredThisWeek = 0;
     const uniqueProductIds = new Set();
+    const emailMap = new Map();
+
+    // Emails de premium
+    recentActivations.forEach(u => {
+      if (u.email) {
+        const key = u.email.toLowerCase();
+        emailMap.set(key, { email: u.email, sources: ['premium'], firstSeen: u.activatedAt || null });
+      }
+    });
 
     try {
       const alertIds = await redis.smembers('alerts:index');
@@ -419,12 +456,24 @@ export default async function handler(req, res) {
             if (a.triggered && a.triggeredAt && a.triggeredAt > sevenDaysAgo) {
               alertsTriggeredThisWeek++;
             }
+            if (a.email) {
+              const key = a.email.toLowerCase();
+              if (emailMap.has(key)) {
+                const ex = emailMap.get(key);
+                if (!ex.sources.includes('alerta')) ex.sources.push('alerta');
+              } else {
+                emailMap.set(key, { email: a.email, sources: ['alerta'], firstSeen: a.createdAt || null });
+              }
+            }
           });
         });
       }
     } catch (alertErr) {
       console.error('[admin-stats] alerts error:', alertErr.message);
     }
+
+    const registeredEmails = [...emailMap.values()]
+      .sort((a, b) => (b.firstSeen || 0) - (a.firstSeen || 0));
 
     return res.status(200).json({
       generatedAt: new Date().toISOString(),
@@ -455,6 +504,7 @@ export default async function handler(req, res) {
       },
       codes: codeStats,
       recentActivations: recentActivations.slice(0, 50),
+      registeredEmails,
     });
   } catch (err) {
     console.error('[admin-stats] error:', err);
