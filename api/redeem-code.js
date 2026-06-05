@@ -11,6 +11,8 @@ export default async function handler(req, res) {
     const body = req.body || {};
     const code = (body.code || '').trim().toUpperCase();
     const installationId = (body.installationId || '').trim();
+    const email = (body.email || '').trim().toLowerCase() || null;
+
     if (!code || !installationId) {
       return res.status(400).json({ error: 'Datos incompletos' });
     }
@@ -41,11 +43,21 @@ export default async function handler(req, res) {
 
     // Activar Premium
     const activatedAt = Date.now();
-    await kv.set(`pml:premium:${installationId}`, JSON.stringify({
-      premium: true, activatedAt, method: 'promo', code,
-    }));
-    await kv.sadd(`pml:code:${code}:used`, installationId);
-    await kv.hincrby(`pml:code:${code}`, 'usedCount', 1);
+    const ops = [
+      kv.set(`pml:premium:${installationId}`, JSON.stringify({
+        premium: true, activatedAt, method: 'promo', code,
+        email: email || null,
+      })),
+      kv.sadd(`pml:code:${code}:used`, installationId),
+      kv.hincrby(`pml:code:${code}`, 'usedCount', 1),
+    ];
+
+    // Índice email → installationId para recuperar premium si reinstala
+    if (email) {
+      ops.push(kv.set(`pml:premium:email:${email}`, installationId));
+    }
+
+    await Promise.all(ops);
 
     return res.status(200).json({ success: true, activatedAt });
   } catch (e) {
