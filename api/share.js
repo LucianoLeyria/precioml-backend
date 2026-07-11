@@ -13,10 +13,12 @@ export default async function handler(req, res) {
   if (!installationId || installationId.length < 10) {
     return res.status(400).json({ error: 'installationId inválido' });
   }
-  const premiumData = await kv.get(`premium:${installationId}`);
-  if (!premiumData) {
-    return res.status(403).json({ error: 'Solo usuarios Premium pueden compartir historial' });
-  }
+      const premiumRaw = await kv.get(`pml:premium:${installationId}`);
+      const premiumData = premiumRaw ? (typeof premiumRaw === 'string' ? JSON.parse(premiumRaw) : premiumRaw) : null;
+      const isPremium = premiumData?.premium === true && (!premiumData.expiresAt || premiumData.expiresAt > Date.now());
+      if (!isPremium) {
+              return res.status(403).json({ error: 'Solo usuarios Premium pueden compartir historial' });
+      }
   if (!productId || !title || !Array.isArray(history) || history.length < 2) {
     return res.status(400).json({ error: 'Datos insuficientes' });
   }
