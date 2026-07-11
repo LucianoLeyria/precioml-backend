@@ -3,55 +3,66 @@
 // POST /api/register-alert
 // Body (alerta de precio objetivo): { installationId, mlItemId, title, url, targetPrice, email }
 // Body (alerta de "cualquier cambio", Premium): { installationId, mlItemId, title, url, anyChange: true, email }
+//
+// Plan free: hasta FREE_ALERT_MAX alertas de precio objetivo. Se valida aca
+// (no solo en el popup) para que no se pueda saltear pegando directo a la API.
+// Plan Premium: alertas ilimitadas + modo anyChange.
 
 import { kv } from '@vercel/kv';
 
+const FREE_ALERT_MAX = 3;
+
 export default async function handler(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    if (req.method === 'OPTIONS') return res.status(200).end();
-    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      if (req.method === 'OPTIONS') return res.status(200).end();
+      if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-        const { installationId, mlItemId, title, url, targetPrice, anyChange, email } = req.body;
+          const { installationId, mlItemId, title, url, targetPrice, anyChange, email } = req.body;
 
-      if (!installationId || !mlItemId || (!targetPrice && !anyChange)) {
-              return res.status(400).json({ error: 'Faltan campos requeridos: installationId, mlItemId, targetPrice (o anyChange)' });
-      }
+        if (!installationId || !mlItemId || (!targetPrice && !anyChange)) {
+                  return res.status(400).json({ error: 'Faltan campos requeridos: installationId, mlItemId, targetPrice (o anyChange)' });
+        }
 
-      // La alerta de "cualquier cambio de precio" es exclusiva de Premium
-      if (anyChange) {
-              const premiumRaw = await kv.get(`pml:premium:${installationId}`);
-              const premiumData = premiumRaw
-                ? (typeof premiumRaw === 'string' ? JSON.parse(premiumRaw) : premiumRaw)
-                        : null;
-              const isPremium = premiumData?.premium === true && (!premiumData.expiresAt || premiumData.expiresAt > Date.now());
-              if (!isPremium) {
-                        return res.status(403).json({ error: 'Esta alerta es exclusiva de Premium' });
-              }
-      }
+        const premiumRaw = await kv.get(`pml:premium:${installationId}`);
+          const premiumData = premiumRaw
+            ? (typeof premiumRaw === 'string' ? JSON.parse(premiumRaw) : premiumRaw)
+                    : null;
+          const isPremium = premiumData?.premium === true && (!premiumData.expiresAt || premiumData.expiresAt > Date.now());
 
-      const existing = (await kv.get(`alerts:${installationId}`)) || [];
-        const filtered = existing.filter(a => a.mlItemId !== mlItemId);
+        if (anyChange && !isPremium) {
+                  return res.status(403).json({ error: 'Esta alerta es exclusiva de Premium' });
+        }
+
+        const existing = (await kv.get(`alerts:${installationId}`)) || [];
+          const filtered = existing.filter(a => a.mlItemId !== mlItemId);
+
+        if (!isPremium && filtered.length >= FREE_ALERT_MAX) {
+                  return res.status(403).json({
+                              error: `Alcanzaste el limite de ${FREE_ALERT_MAX} alertas del plan gratuito. Activa Premium para alertas ilimitadas.`,
+                  });
+        }
+
         filtered.push({
-                mlItemId,
-                title: (title || '').substring(0, 120),
-                url: url || null,
-                targetPrice: targetPrice ? Number(targetPrice) : null,
-                anyChange: !!anyChange,
-                lastKnownPrice: null,
-                email: email || null,
-                createdAt: Date.now(),
-                triggered: false,
+                  mlItemId,
+                  title: (title || '').substring(0, 120),
+                  url: url || null,
+                  targetPrice: targetPrice ? Number(targetPrice) : null,
+                  anyChange: !!anyChange,
+                  lastKnownPrice: null,
+                  email: email || null,
+                  createdAt: Date.now(),
+                  triggered: false,
         });
 
-      await kv.set(`alerts:${installationId}`, filtered, { ex: 60 * 60 * 24 * 365 });
-        await kv.sadd('alerts:index', installationId);
+        await kv.set(`alerts:${installationId}`, filtered, { ex: 60 * 60 * 24 * 365 });
+          await kv.sadd('alerts:index', installationId);
 
-      return res.status(200).json({ ok: true, total: filtered.length });
+        return res.status(200).json({ ok: true, total: filtered.length });
   } catch (err) {
-        console.error('[register-alert] Error:', err);
-        return res.status(500).json({ error: 'Error interno' });
+          console.error('[register-alert] Error:', err);
+          return res.status(500).json({ error: 'Error interno' });
   }
 }
