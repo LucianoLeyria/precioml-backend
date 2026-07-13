@@ -1,5 +1,14 @@
 import { kv } from '@vercel/kv';
 
+// Sentinel: los codigos promo dan premium "de por vida" (sin expiresAt,
+// ver check-premium.js -> plan: 'lifetime'). Pero el dashboard admin arma
+// TODAS sus metricas de premium a partir del sorted set pml:premium:expiries
+// (ver admin-stats.js). Si no agregamos aca a ese set, un usuario que
+// canjeo un codigo promo queda invisible en el panel admin aunque tenga
+// premium real. Usamos un score muy lejano en el futuro para que siempre
+// cuente como activo sin tener que tocar la logica de check-premium.js.
+const LIFETIME_SCORE_YEARS = 100;
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -43,6 +52,7 @@ export default async function handler(req, res) {
 
     // Activar Premium
     const activatedAt = Date.now();
+    const lifetimeScore = activatedAt + LIFETIME_SCORE_YEARS * 365 * 24 * 60 * 60 * 1000;
     const ops = [
       kv.set(`pml:premium:${installationId}`, JSON.stringify({
         premium: true, activatedAt, method: 'promo', code,
@@ -50,6 +60,7 @@ export default async function handler(req, res) {
       })),
       kv.sadd(`pml:code:${code}:used`, installationId),
       kv.hincrby(`pml:code:${code}`, 'usedCount', 1),
+      kv.zadd('pml:premium:expiries', { score: lifetimeScore, member: installationId }),
     ];
 
     // Índice email → installationId para recuperar premium si reinstala
