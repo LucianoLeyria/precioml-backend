@@ -279,7 +279,8 @@ function render(data){
   }else{
     h+='<table><thead><tr><th>Producto<\/th><th>Trackeos<\/th><\/tr><\/thead><tbody>';
     top.forEach(function(p){
-      h+='<tr><td><a href="https://articulo.mercadolibre.com.ar/'+p.mlItemId+'" target="_blank" style="color:#3483fa;text-decoration:none;font-family:monospace">'+p.mlItemId+'<\/a><\/td><td>'+p.count+'<\/td><\/tr>';
+      var mlUrl=p.mlItemId.replace(/^([A-Z]+)(\d+)$/,'$1-$2');
+      h+='<tr><td><a href="https://articulo.mercadolibre.com.ar/'+mlUrl+'" target="_blank" style="color:#3483fa;text-decoration:none;font-family:monospace">'+p.mlItemId+'<\/a><\/td><td>'+p.count+'<\/td><\/tr>';
     });
     h+='<\/tbody><\/table>';
   }
