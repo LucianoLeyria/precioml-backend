@@ -1,4 +1,9 @@
 // ARCHIVO: api/register-install.js
+// Registra una instalacion (llamado en cada arranque de Chrome / instalacion
+// nueva) y, opcionalmente, el email que el usuario dejo voluntariamente en
+// la casilla "Guarda tu email para alertas gratis" del popup. No hay
+// endpoint separado para eso (register-email.js) para no sumar una funcion
+// mas al limite de 12 de Vercel Hobby.
 import { Redis } from '@upstash/redis';
 
 const redis = new Redis({
@@ -13,23 +18,33 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { id, isNewInstall, version } = req.body || {};
+  const { id, isNewInstall, version, email } = req.body || {};
   if (!id) return res.status(400).json({ error: 'id requerido' });
 
   try {
     const now = Date.now();
 
-    // Verificar si ya estaba registrado (sadd devuelve 1 si es nuevo, 0 si ya existía)
+    // Verificar si ya estaba registrado (sadd devuelve 1 si es nuevo, 0 si ya existia)
     const isFirstTime = await redis.sadd('pml:installs', id);
 
-    const ops = [
-      redis.hset('pml:install:' + id, {
-        lastSeen: now,
-        version: version || 'unknown',
-      }),
-    ];
+    const hashUpdate = {
+      lastSeen: now,
+      version: version || 'unknown',
+    };
 
-    // Solo contar como instalación nueva si es la primera vez que vemos este ID
+    const validEmail = typeof email === 'string' && email.includes('@') ? email.trim().toLowerCase() : null;
+    if (validEmail) {
+      hashUpdate.email = validEmail;
+      hashUpdate.emailSavedAt = now;
+    }
+
+    const ops = [redis.hset('pml:install:' + id, hashUpdate)];
+
+    if (validEmail) {
+      ops.push(redis.sadd('pml:emails-free', validEmail));
+    }
+
+    // Solo contar como instalacion nueva si es la primera vez que vemos este ID
     if (isFirstTime === 1) {
       const dayKey = new Date(now).toISOString().slice(0, 10);
       ops.push(
