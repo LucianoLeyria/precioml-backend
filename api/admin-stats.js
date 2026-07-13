@@ -234,7 +234,7 @@ function render(data){
   h+='<div class="section-title">Actividad en el tiempo<\/div>';
   h+='<div class="toggle">';
   [['day','Diario'],['week','Semanal'],['month','Mensual'],['year','Anual']].forEach(function(p){
-    h+='<button onclick="setPeriod(\''+p[0]+'\')" class="'+(PERIOD===p[0]?'active':'')+'">'+p[1]+'<\/button>';
+    h+='<button onclick="setPeriod(\\''+p[0]+'\\')" class="'+(PERIOD===p[0]?'active':'')+'">'+p[1]+'<\/button>';
   });
   h+='<\/div>';
   h+='<div class="two">';
