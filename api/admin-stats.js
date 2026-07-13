@@ -279,8 +279,8 @@ function render(data){
   }else{
     h+='<table><thead><tr><th>Producto<\/th><th>Trackeos<\/th><\/tr><\/thead><tbody>';
     top.forEach(function(p){
-      var mlUrl=p.mlItemId.replace(/^([A-Z]+)(\d+)$/,'$1-$2');
-      h+='<tr><td><a href="https://articulo.mercadolibre.com.ar/'+mlUrl+'" target="_blank" style="color:#3483fa;text-decoration:none;font-family:monospace">'+p.mlItemId+'<\/a><\/td><td>'+p.count+'<\/td><\/tr>';
+      var link=p.url||('https://articulo.mercadolibre.com.ar/'+p.mlItemId.replace(/^([A-Z]+)(\d+)$/,'$1-$2'));
+      h+='<tr><td><a href="'+link+'" target="_blank" style="color:#3483fa;text-decoration:none;font-family:monospace">'+p.mlItemId+'<\/a><\/td><td>'+p.count+'<\/td><\/tr>';
     });
     h+='<\/tbody><\/table>';
   }
@@ -555,7 +555,13 @@ export default async function handler(req, res) {
               alertsTriggeredThisWeek++;
             }
             if (a.mlItemId) {
-              productCounts.set(a.mlItemId, (productCounts.get(a.mlItemId) || 0) + 1);
+              const existingCount = productCounts.get(a.mlItemId);
+              if (existingCount) {
+                existingCount.count++;
+                if (!existingCount.url && a.url) existingCount.url = a.url;
+              } else {
+                productCounts.set(a.mlItemId, { count: 1, url: a.url || null });
+              }
             }
             alertItems.push({
               createdAt: a.createdAt || null,
@@ -580,9 +586,9 @@ export default async function handler(req, res) {
     }
 
     const topProducts = [...productCounts.entries()]
-      .sort((a, b) => b[1] - a[1])
+      .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 10)
-      .map(([mlItemId, count]) => ({ mlItemId, count }));
+      .map(([mlItemId, data]) => ({ mlItemId, count: data.count, url: data.url || null }));
 
     const registeredEmails = [...emailMap.values()]
       .sort((a, b) => (b.firstSeen || 0) - (a.firstSeen || 0));
