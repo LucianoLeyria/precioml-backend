@@ -45,6 +45,9 @@ export default async function handler(req, res) {
               if (mlData.status === 'active' || mlData.status === 'paused') {
                 currentPrice = mlData.price;
               }
+            } else {
+              const bodyText = await mlRes.text().catch(() => '');
+              stats.errors.push({ mlItemId: alert.mlItemId, error: `ML HTTP ${mlRes.status}: ${bodyText.substring(0, 200)}` });
             }
           } catch (fetchErr) {
             stats.errors.push({ mlItemId: alert.mlItemId, error: fetchErr.message });
