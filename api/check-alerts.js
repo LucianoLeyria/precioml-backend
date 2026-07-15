@@ -5,10 +5,19 @@
 import { kv } from '@vercel/kv';
 
 const ML_API = 'https://api.mercadolibre.com/items';
+const ML_OAUTH_TOKEN_URL = 'https://api.mercadolibre.com/oauth/token';
+const ML_REDIRECT_URI = 'https://precioml-backend.vercel.app/api/check-alerts';
 const RESEND_API = 'https://api.resend.com/emails';
 const FROM_EMAIL = 'PrecioML Alertas <alertas@precioml.crecimientoinsta.com>';
 
 export default async function handler(req, res) {
+  // Callback de OAuth: MercadoLibre redirige aca con ?code=... despues de que
+  // el usuario autoriza la app en developers.mercadolibre.com.ar. Es un paso
+  // unico manual, no requiere CRON_SECRET.
+  if (req.method === 'GET' && req.query?.code) {
+    return handleMLOAuthCallback(req, res);
+  }
+
   const auth = req.headers['authorization'];
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -16,6 +25,16 @@ export default async function handler(req, res) {
   if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).end();
 
   const stats = { checked: 0, triggered: 0, emails: 0, errors: [] };
+
+  let mlAccessToken = null;
+  try {
+    mlAccessToken = await getMLAccessToken();
+    if (!mlAccessToken) {
+      stats.errors.push({ error: 'ML OAuth: todavia no se autorizo la app (falta el paso manual de /api/check-alerts?code=...)' });
+    }
+  } catch (oauthErr) {
+    stats.errors.push({ error: `ML OAuth: ${oauthErr.message}` });
+  }
 
   try {
     const installationIds = await kv.smembers('alerts:index');
@@ -39,6 +58,7 @@ export default async function handler(req, res) {
           try {
             const mlRes = await fetch(`${ML_API}/${alert.mlItemId}?attributes=price,status`, {
               signal: AbortSignal.timeout(6000),
+              headers: mlAccessToken ? { Authorization: `Bearer ${mlAccessToken}` } : {},
             });
             if (mlRes.ok) {
               const mlData = await mlRes.json();
@@ -231,4 +251,73 @@ Enviado por <a href="https://precioml-backend.vercel.app" style="color:#3483fa;t
 
 function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── OAuth de MercadoLibre ───────────────────────────────────────────────
+// api.mercadolibre.com/items/{id} paso a exigir un access_token valido
+// (antes era publico). Guardamos access_token + refresh_token en KV y los
+// renovamos solos; el unico paso manual es autorizar la app una vez.
+
+async function handleMLOAuthCallback(req, res) {
+  const code = req.query.code;
+  try {
+    const response = await fetch(ML_OAUTH_TOKEN_URL, {
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: process.env.ML_CLIENT_ID,
+        client_secret: process.env.ML_CLIENT_SECRET,
+        code,
+        redirect_uri: ML_REDIRECT_URI,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      return res.status(500).send(`<h1>Error al autorizar</h1><pre>${escHtml(JSON.stringify(data))}</pre>`);
+    }
+    await saveMLTokens(data);
+    return res.status(200).send('<h1>Listo</h1><p>PrecioML quedo autorizado para consultar precios en MercadoLibre. Ya podes cerrar esta pestana.</p>');
+  } catch (err) {
+    return res.status(500).send(`<h1>Error</h1><pre>${escHtml(err.message)}</pre>`);
+  }
+}
+
+async function saveMLTokens(data) {
+  const expiresAt = Date.now() + (data.expires_in * 1000);
+  await kv.set('ml:oauth:tokens', JSON.stringify({
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expires_at: expiresAt,
+  }));
+}
+
+async function getMLAccessToken() {
+  const raw = await kv.get('ml:oauth:tokens');
+  if (!raw) return null;
+  const tokens = typeof raw === 'string' ? JSON.parse(raw) : raw;
+
+  const bufferMs = 5 * 60 * 1000;
+  if (tokens.expires_at - Date.now() > bufferMs) {
+    return tokens.access_token;
+  }
+
+  // Access token vencido (o por vencer): lo renovamos con el refresh_token.
+  // ML devuelve un refresh_token NUEVO en cada renovacion, hay que guardarlo.
+  const response = await fetch(ML_OAUTH_TOKEN_URL, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: process.env.ML_CLIENT_ID,
+      client_secret: process.env.ML_CLIENT_SECRET,
+      refresh_token: tokens.refresh_token,
+    }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(`No se pudo renovar el token de ML: ${JSON.stringify(data)}`);
+  }
+  await saveMLTokens(data);
+  return data.access_token;
 }
