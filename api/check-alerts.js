@@ -56,14 +56,24 @@ export default async function handler(req, res) {
 
           let currentPrice = null;
           try {
-            const mlRes = await fetch(`${ML_API}/${alert.mlItemId}?attributes=price,status`, {
+            // Usamos el endpoint "multiget" (?ids=...) en vez de /items/{id}:
+            // MercadoLibre restringio /items/{id} a que el access_token sea
+            // del dueno del item, pero el multiget sigue siendo consultable
+            // para items de terceros (ver docs: "Ítems y Búsquedas").
+            const mlRes = await fetch(`${ML_API}?ids=${alert.mlItemId}&attributes=id,price,status`, {
               signal: AbortSignal.timeout(6000),
               headers: mlAccessToken ? { Authorization: `Bearer ${mlAccessToken}` } : {},
             });
             if (mlRes.ok) {
-              const mlData = await mlRes.json();
-              if (mlData.status === 'active' || mlData.status === 'paused') {
-                currentPrice = mlData.price;
+              const mlArr = await mlRes.json();
+              const entry = Array.isArray(mlArr) ? mlArr[0] : null;
+              if (entry && entry.code === 200 && entry.body) {
+                const mlData = entry.body;
+                if (mlData.status === 'active' || mlData.status === 'paused') {
+                  currentPrice = mlData.price;
+                }
+              } else {
+                stats.errors.push({ mlItemId: alert.mlItemId, error: `ML multiget code ${entry ? entry.code : '?'}: ${JSON.stringify(entry && entry.body).substring(0, 200)}` });
               }
             } else {
               const bodyText = await mlRes.text().catch(() => '');
