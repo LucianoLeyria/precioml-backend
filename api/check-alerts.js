@@ -18,6 +18,16 @@ export default async function handler(req, res) {
     return handleMLOAuthCallback(req, res);
   }
 
+  // Reporte de precio desde el navegador del usuario (background.js de la
+  // extension). MercadoLibre bloqueo la lectura server-side de items de
+  // terceros, asi que ahora es el navegador el que lee el precio real de
+  // la pagina y nos avisa; este endpoint decide si corresponde mandar el
+  // mail de alerta. No usa CRON_SECRET (lo llama cualquier usuario), la
+  // "autenticacion" es el installationId (igual que el resto de la API).
+  if (req.method === 'POST' && req.body?.clientReport) {
+    return handleClientPriceReport(req, res);
+  }
+
   const auth = req.headers['authorization'];
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -261,6 +271,70 @@ Enviado por <a href="https://precioml-backend.vercel.app" style="color:#3483fa;t
 
 function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Reporte de precio desde el navegador (reemplaza el chequeo server-side) ─
+async function handleClientPriceReport(req, res) {
+  try {
+    const { installationId, mlItemId, currentPrice } = req.body || {};
+    if (!installationId || !mlItemId || typeof currentPrice !== 'number' || currentPrice <= 0) {
+      return res.status(400).json({ error: 'Faltan campos: installationId, mlItemId, currentPrice' });
+    }
+
+    const alerts = (await kv.get(`alerts:${installationId}`)) || [];
+    const idx = alerts.findIndex(a => a.mlItemId === mlItemId);
+    if (idx === -1) {
+      return res.status(200).json({ ok: true, matched: false });
+    }
+
+    const alert = alerts[idx];
+    let emailSent = false;
+    let changed = false;
+
+    if (alert.anyChange) {
+      if (alert.lastKnownPrice === null || alert.lastKnownPrice === undefined) {
+        alert.lastKnownPrice = currentPrice;
+        changed = true;
+      } else if (alert.lastKnownPrice !== currentPrice) {
+        const oldPrice = alert.lastKnownPrice;
+        alert.lastKnownPrice = currentPrice;
+        alert.lastNotifiedAt = Date.now();
+        changed = true;
+        if (alert.email) {
+          await sendChangeEmail(alert, oldPrice, currentPrice);
+          emailSent = true;
+        }
+      }
+    } else if (!alert.triggered && currentPrice <= alert.targetPrice) {
+      alert.triggered = true;
+      alert.triggeredAt = Date.now();
+      alert.triggeredPrice = currentPrice;
+      changed = true;
+      if (alert.email) {
+        await sendAlertEmail(alert, currentPrice);
+        emailSent = true;
+      }
+    }
+
+    if (changed) {
+      alerts[idx] = alert;
+      const toKeep = alerts.filter(a => {
+        if (a.anyChange) return true;
+        if (!a.triggered) return true;
+        return Date.now() - (a.triggeredAt || 0) < 7 * 24 * 60 * 60 * 1000;
+      });
+      if (toKeep.length === 0) {
+        await kv.del(`alerts:${installationId}`);
+        await kv.srem('alerts:index', installationId);
+      } else {
+        await kv.set(`alerts:${installationId}`, toKeep, { ex: 60 * 60 * 24 * 365 });
+      }
+    }
+
+    return res.status(200).json({ ok: true, matched: true, emailSent });
+  } catch (err) {
+    return res.status(500).json({ error: 'Error interno', message: err.message });
+  }
 }
 
 // ─── OAuth de MercadoLibre ───────────────────────────────────────────────
