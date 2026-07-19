@@ -62,7 +62,7 @@ export default async function handler(req, res) {
     const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
 
     if (!data.expiresAt) {
-      const resp = { premium: data.premium === true, activatedAt: data.activatedAt, expiresAt: null, daysLeft: null, plan: 'lifetime' };
+      const resp = { premium: data.premium === true, activatedAt: data.activatedAt, expiresAt: null, daysLeft: null, plan: 'lifetime', subscriptionCancelled: false };
       if (restore === '1' && data.premium) {
         const backup = await redis.get('pml:history:' + id);
         if (backup) resp.historyBackup = typeof backup === 'string' ? backup : JSON.stringify(backup);
@@ -78,7 +78,7 @@ export default async function handler(req, res) {
     }
 
     const daysLeft = Math.ceil((data.expiresAt - now) / (1000 * 60 * 60 * 24));
-    const resp = { premium: true, activatedAt: data.activatedAt, expiresAt: data.expiresAt, daysLeft, plan: data.plan || 'monthly' };
+    const resp = { premium: true, activatedAt: data.activatedAt, expiresAt: data.expiresAt, daysLeft, plan: data.plan || 'monthly', subscriptionCancelled: data.subscriptionCancelled === true };
 
     if (restore === '1') {
       const backup = await redis.get('pml:history:' + id);
