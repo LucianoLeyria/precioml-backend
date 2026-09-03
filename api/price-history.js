@@ -21,11 +21,13 @@ export default async function handler(req, res) {
   }
 
   const key = `pml:history:${productId}`;
+  const trackersKey = `pml:trackers:${productId}`;
 
   // ─── GET: devolver historial ───────────────────────────────────────
   if (req.method === 'GET') {
     const history = await kv.get(key);
-    return res.status(200).json({ history: history || [] });
+    const trackerCount = (await kv.scard(trackersKey)) || 0;
+    return res.status(200).json({ history: history || [], trackerCount });
   }
 
   // ─── POST: registrar precio ────────────────────────────────────────
@@ -35,7 +37,13 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Precio inválido' });
     }
 
-    const history = (await kv.get(key)) || [];
+const installationId = (req.body?.installationId || '').trim();
+        if (installationId) {
+              await kv.sadd(trackersKey, installationId);
+              await kv.expire(trackersKey, TTL_SECONDS);
+        }
+        
+        const history = (await kv.get(key)) || [];
     const now = Date.now();
     const lastPoint = history[history.length - 1];
 
