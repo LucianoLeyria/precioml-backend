@@ -16,7 +16,7 @@ export default async function handler(req, res) {
     ''
   ).trim().toUpperCase();
 
-  if (!productId || !/^MLA\d+$/.test(productId)) {
+    if (!productId || !/^(?:MLA|MLB|MLM|MLC|MLU|MLV|MCO|MPE)\d+$/.test(productId)) {
     return res.status(400).json({ error: 'ID inválido' });
   }
 
