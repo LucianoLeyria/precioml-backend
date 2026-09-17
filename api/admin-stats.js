@@ -141,9 +141,9 @@ async function sendTestDigest(){
         totalTracked:52,
         totalSaved:1138485,
         items:[
-          {title:'Notebook Lenovo IdeaPad 3 15.6 Ryzen 5',price:754699,image:'https://http2.mlstatic.com/D_NQ_NP_2X_684321-MLA75211680420_022024-F.webp',url:'https://articulo.mercadolibre.com.ar/MLA-1234567890',badge:{type:'min',label:'Minimo historico'}},
-          {title:'Auriculares Bluetooth Havit H2035BT',price:45999,image:'https://http2.mlstatic.com/D_NQ_NP_2X_845321-MLA48376543210_102021-F.webp',url:'https://articulo.mercadolibre.com.ar/MLA-2345678901'},
-          {title:'Monitor Gamer ASRock 24 165Hz',price:214999,image:'https://http2.mlstatic.com/D_NQ_NP_2X_912345-MLA51234567890_072022-F.webp',url:'https://articulo.mercadolibre.com.ar/MLA-3456789012',badge:{type:'good',label:'Buen precio'}}
+          {title:'Notebook Lenovo IdeaPad Slim Core i3 N305 8Gb Ssd 128Gb 15.6" Win11',price:754699,image:'https://http2.mlstatic.com/D_NQ_NP_927566-MLA113529511351_062026-O.webp',url:'https://www.mercadolibre.com.ar/notebook-lenovo-ideapad-slim-core-i3-n305-8gb-ssd-128gb-156-win11/p/MLA53904053',badge:{type:'min',label:'Minimo historico'}},
+          {title:'Auriculares Bluetooth Havit H2035BT (test, mismo link real)',price:45999,image:'https://http2.mlstatic.com/D_NQ_NP_927566-MLA113529511351_062026-O.webp',url:'https://www.mercadolibre.com.ar/notebook-lenovo-ideapad-slim-core-i3-n305-8gb-ssd-128gb-156-win11/p/MLA53904053'},
+          {title:'Monitor Gamer ASRock 24 165Hz (test, mismo link real)',price:214999,image:'https://http2.mlstatic.com/D_NQ_NP_927566-MLA113529511351_062026-O.webp',url:'https://www.mercadolibre.com.ar/notebook-lenovo-ideapad-slim-core-i3-n305-8gb-ssd-128gb-156-win11/p/MLA53904053',badge:{type:'good',label:'Buen precio'}}
         ]
       })
     });
