@@ -93,6 +93,7 @@ tr:last-child td{border-bottom:none}
 
 <div class="container" id="dash" style="display:none">
 <button class="rbtn" onclick="load()">Actualizar<\/button>
+<button class="rbtn" id="digest-btn" onclick="sendTestDigest()" style="background:#3483fa">Enviar resumen semanal de prueba<\/button>
 <div id="content" class="loading">Cargando...<\/div>
 <\/div>
 
@@ -125,6 +126,32 @@ async function load(){
     D=await r.json();
     render(D);
   }catch(e){c.innerHTML='<div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#ef4444;padding:12px 16px;border-radius:8px;font-size:13px">'+e.message+'<\/div>';}
+}
+
+async function sendTestDigest(){
+  var btn=document.getElementById('digest-btn');
+  btn.disabled=true;
+  btn.textContent='Enviando...';
+  try{
+    var r=await fetch(window.location.href,{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+S,'Content-Type':'application/json'},
+      body:JSON.stringify({
+        email:'leyrialu@gmail.com',
+        totalTracked:52,
+        totalSaved:1138485,
+        items:[
+          {title:'Notebook Lenovo IdeaPad',price:754699,badge:{type:'min',label:'Minimo historico'}},
+          {title:'Auriculares Bluetooth Havit',price:45999},
+          {title:'Monitor Gamer ASRock',price:214999,badge:{type:'good',label:'Buen precio'}}
+        ]
+      })
+    });
+    var j=await r.json();
+    if(r.ok){ btn.textContent='Enviado, revisa tu mail'; }
+    else{ btn.textContent='Error: '+(j.error||r.status); }
+  }catch(e){ btn.textContent='Error: '+e.message; }
+  setTimeout(function(){btn.disabled=false;btn.textContent='Enviar resumen semanal de prueba';},4000);
 }
 
 function fmt(ts){if(!ts)return '-';return new Date(ts).toLocaleDateString('es-AR',{day:'numeric',month:'short',year:'numeric'});}
@@ -373,11 +400,18 @@ function render(data){
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const auth = req.headers['authorization'] || '';
+
+  if (req.method === 'POST') {
+    if (auth !== `Bearer ${process.env.ADMIN_SECRET}`) {
+      return res.status(401).json({ error: 'No autorizado' });
+    }
+    return handleWeeklyDigest(req, res);
+  }
 
   if (!auth) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -632,4 +666,115 @@ export default async function handler(req, res) {
     console.error('[admin-stats] error:', err);
     return res.status(500).json({ error: err.message });
   }
+}
+
+// -- Resumen semanal por email (POC) --------------------------------
+// Solo habilitado para el email del dev mientras se valida el formato.
+const DIGEST_ALLOWED_EMAILS = ['leyrialu@gmail.com'];
+const DIGEST_FROM_EMAIL = 'PrecioML Resumen <resumen@precioml.crecimientoinsta.com>';
+
+async function handleWeeklyDigest(req, res) {
+  try {
+    const body = req.body || {};
+    const email = (body.email || '').trim().toLowerCase();
+    const items = Array.isArray(body.items) ? body.items : [];
+    const totalTracked = parseInt(body.totalTracked || items.length, 10);
+    const totalSaved = body.totalSaved != null ? Number(body.totalSaved) : null;
+
+    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      return res.status(400).json({ error: 'Email invalido' });
+    }
+    if (!DIGEST_ALLOWED_EMAILS.includes(email)) {
+      return res.status(403).json({ error: 'El resumen semanal todavia esta en prueba (POC), solo habilitado para el email del desarrollador.' });
+    }
+    if (items.length === 0) {
+      return res.status(400).json({ error: 'No hay productos para armar el resumen' });
+    }
+
+    const html = digestBuildHtml(items, totalTracked, totalSaved);
+
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: DIGEST_FROM_EMAIL,
+        to: email,
+        subject: 'Tu resumen semanal de PrecioML',
+        html,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(errText);
+    }
+
+    return res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error('[weekly-digest] error:', err);
+    return res.status(500).json({ error: 'Error interno', message: err.message });
+  }
+}
+
+function digestFmt(p) {
+  return `$ ${Math.round(p).toLocaleString('es-AR')}`;
+}
+
+function digestEscHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function digestBadgeHtml(badge) {
+  if (!badge) return '';
+  const colors = {
+    min: { bg: '#f0fdf4', color: '#00a650' },
+    good: { bg: '#f8faff', color: '#3483fa' },
+    up: { bg: '#fdf3ea', color: '#e67e22' },
+  };
+  const c = colors[badge.type] || colors.good;
+  return `<span style="display:inline-block;background:${c.bg};color:${c.color};font-size:11px;font-weight:700;padding:3px 8px;border-radius:8px;margin-left:8px;">${digestEscHtml(badge.label)}</span>`;
+}
+
+function digestBuildHtml(items, totalTracked, totalSaved) {
+  const rows = items.map((it) => `
+    <tr>
+      <td style="padding:14px 0;border-bottom:1px solid #f0f0f0;">
+        <div style="font-size:13px;font-weight:600;color:#222;margin-bottom:4px;">${digestEscHtml(it.title)}</div>
+        <div style="font-size:16px;font-weight:800;color:#222;">${digestFmt(it.price)}${digestBadgeHtml(it.badge)}</div>
+      </td>
+    </tr>
+  `).join('');
+
+  const savedBlock = totalSaved != null ? `
+    <div style="background:#f0fdf4;border-radius:10px;padding:16px;margin-bottom:20px;text-align:center;">
+      <div style="font-size:12px;color:#555;margin-bottom:4px;">Ahorro acumulado detectado</div>
+      <div style="font-size:24px;font-weight:800;color:#00a650;">${digestFmt(totalSaved)}</div>
+    </div>
+  ` : '';
+
+  return `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"/></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#f5f7fa;margin:0;padding:20px;">
+<div style="max-width:560px;margin:0 auto;">
+<div style="background:#3483fa;border-radius:12px 12px 0 0;padding:20px 24px;">
+<h1 style="color:#fff;font-size:20px;margin:0;">Tu resumen semanal &mdash; PrecioML</h1>
+</div>
+<div style="background:#fff;border-radius:0 0 12px 12px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
+<p style="font-size:14px;color:#555;margin:0 0 16px;">Estado actual de tus ${totalTracked} productos trackeados:</p>
+${savedBlock}
+<table width="100%" cellpadding="0" cellspacing="0">${rows}</table>
+<p style="font-size:12px;color:#aaa;margin:20px 0 0;text-align:center;">Abri la extension para ver el detalle completo, editar alertas o comparar precios.</p>
+</div>
+<div style="text-align:center;padding:16px;font-size:11px;color:#aaa;">
+Enviado por <a href="https://precioml-backend.vercel.app" style="color:#3483fa;text-decoration:none;">PrecioML</a>
+</div>
+</div>
+</body></html>`;
 }
