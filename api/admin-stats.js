@@ -141,9 +141,9 @@ async function sendTestDigest(){
         totalTracked:52,
         totalSaved:1138485,
         items:[
-          {title:'Notebook Lenovo IdeaPad',price:754699,badge:{type:'min',label:'Minimo historico'}},
-          {title:'Auriculares Bluetooth Havit',price:45999},
-          {title:'Monitor Gamer ASRock',price:214999,badge:{type:'good',label:'Buen precio'}}
+          {title:'Notebook Lenovo IdeaPad 3 15.6 Ryzen 5',price:754699,image:'https://http2.mlstatic.com/D_NQ_NP_2X_684321-MLA75211680420_022024-F.webp',url:'https://articulo.mercadolibre.com.ar/MLA-1234567890',badge:{type:'min',label:'Minimo historico'}},
+          {title:'Auriculares Bluetooth Havit H2035BT',price:45999,image:'https://http2.mlstatic.com/D_NQ_NP_2X_845321-MLA48376543210_102021-F.webp',url:'https://articulo.mercadolibre.com.ar/MLA-2345678901'},
+          {title:'Monitor Gamer ASRock 24 165Hz',price:214999,image:'https://http2.mlstatic.com/D_NQ_NP_2X_912345-MLA51234567890_072022-F.webp',url:'https://articulo.mercadolibre.com.ar/MLA-3456789012',badge:{type:'good',label:'Buen precio'}}
         ]
       })
     });
@@ -406,10 +406,10 @@ export default async function handler(req, res) {
 
   const auth = req.headers['authorization'] || '';
 
+  // El envio del resumen semanal lo dispara la extension del propio usuario
+  // (no tiene el ADMIN_SECRET) — la proteccion real durante la POC es
+  // DIGEST_ALLOWED_EMAILS dentro de handleWeeklyDigest.
   if (req.method === 'POST') {
-    if (auth !== `Bearer ${process.env.ADMIN_SECRET}`) {
-      return res.status(401).json({ error: 'No autorizado' });
-    }
     return handleWeeklyDigest(req, res);
   }
 
@@ -734,47 +734,72 @@ function digestEscHtml(str) {
 function digestBadgeHtml(badge) {
   if (!badge) return '';
   const colors = {
-    min: { bg: '#f0fdf4', color: '#00a650' },
-    good: { bg: '#f8faff', color: '#3483fa' },
-    up: { bg: '#fdf3ea', color: '#e67e22' },
+    min: { bg: '#e8f9ef', color: '#00a650' },
+    good: { bg: '#eaf2ff', color: '#3483fa' },
+    up: { bg: '#fdf1e6', color: '#e67e22' },
   };
   const c = colors[badge.type] || colors.good;
-  return `<span style="display:inline-block;background:${c.bg};color:${c.color};font-size:11px;font-weight:700;padding:3px 8px;border-radius:8px;margin-left:8px;">${digestEscHtml(badge.label)}</span>`;
+  return `<span style="display:inline-block;background:${c.bg};color:${c.color};font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;margin-top:6px;">${digestEscHtml(badge.label)}</span>`;
+}
+
+function digestImgHtml(image, link) {
+  const img = image
+    ? `<img src="${digestEscHtml(image)}" width="72" height="72" alt="" style="display:block;width:72px;height:72px;border-radius:10px;object-fit:contain;background:#f5f6f8;border:1px solid #eee;" />`
+    : `<div style="width:72px;height:72px;border-radius:10px;background:#f5f6f8;border:1px solid #eee;display:table-cell;vertical-align:middle;text-align:center;font-size:26px;">🛒</div>`;
+  return link
+    ? `<a href="${digestEscHtml(link)}" target="_blank" style="text-decoration:none;">${img}</a>`
+    : img;
 }
 
 function digestBuildHtml(items, totalTracked, totalSaved) {
-  const rows = items.map((it) => `
+  const rows = items.map((it) => {
+    const link = it.url || null;
+    const titleHtml = link
+      ? `<a href="${digestEscHtml(link)}" target="_blank" style="text-decoration:none;color:#1a1a1a;">${digestEscHtml(it.title)}</a>`
+      : digestEscHtml(it.title);
+    return `
     <tr>
-      <td style="padding:14px 0;border-bottom:1px solid #f0f0f0;">
-        <div style="font-size:13px;font-weight:600;color:#222;margin-bottom:4px;">${digestEscHtml(it.title)}</div>
-        <div style="font-size:16px;font-weight:800;color:#222;">${digestFmt(it.price)}${digestBadgeHtml(it.badge)}</div>
+      <td style="padding:16px 0;border-bottom:1px solid #f0f0f0;">
+        <table cellpadding="0" cellspacing="0" width="100%" role="presentation"><tr>
+          <td width="72" style="vertical-align:top;">${digestImgHtml(it.image, link)}</td>
+          <td style="padding-left:14px;vertical-align:top;">
+            <div style="font-size:13.5px;font-weight:600;line-height:1.35;margin-bottom:6px;">${titleHtml}</div>
+            <div style="font-size:17px;font-weight:800;color:#1a1a1a;">${digestFmt(it.price)}</div>
+            <div>${digestBadgeHtml(it.badge)}</div>
+          </td>
+          ${link ? `<td width="34" style="vertical-align:middle;text-align:right;">
+            <a href="${digestEscHtml(link)}" target="_blank" style="text-decoration:none;color:#3483fa;font-size:18px;font-weight:700;">&rarr;</a>
+          </td>` : ''}
+        </tr></table>
       </td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
-  const savedBlock = totalSaved != null ? `
-    <div style="background:#f0fdf4;border-radius:10px;padding:16px;margin-bottom:20px;text-align:center;">
-      <div style="font-size:12px;color:#555;margin-bottom:4px;">Ahorro acumulado detectado</div>
-      <div style="font-size:24px;font-weight:800;color:#00a650;">${digestFmt(totalSaved)}</div>
+  const savedBlock = totalSaved != null && totalSaved > 0 ? `
+    <div style="background:linear-gradient(135deg,#e8f9ef,#f0fdf4);border-radius:12px;padding:18px;margin-bottom:22px;text-align:center;">
+      <div style="font-size:12px;color:#3d7a55;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">💰 Ahorro acumulado detectado</div>
+      <div style="font-size:28px;font-weight:800;color:#00a650;">${digestFmt(totalSaved)}</div>
     </div>
   ` : '';
 
   return `<!DOCTYPE html>
-<html lang="es"><head><meta charset="UTF-8"/></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#f5f7fa;margin:0;padding:20px;">
-<div style="max-width:560px;margin:0 auto;">
-<div style="background:#3483fa;border-radius:12px 12px 0 0;padding:20px 24px;">
-<h1 style="color:#fff;font-size:20px;margin:0;">Tu resumen semanal &mdash; PrecioML</h1>
-</div>
-<div style="background:#fff;border-radius:0 0 12px 12px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
-<p style="font-size:14px;color:#555;margin:0 0 16px;">Estado actual de tus ${totalTracked} productos trackeados:</p>
-${savedBlock}
-<table width="100%" cellpadding="0" cellspacing="0">${rows}</table>
-<p style="font-size:12px;color:#aaa;margin:20px 0 0;text-align:center;">Abri la extension para ver el detalle completo, editar alertas o comparar precios.</p>
-</div>
-<div style="text-align:center;padding:16px;font-size:11px;color:#aaa;">
-Enviado por <a href="https://precioml-backend.vercel.app" style="color:#3483fa;text-decoration:none;">PrecioML</a>
-</div>
+<html lang="es"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;background:#eef1f5;margin:0;padding:24px 12px;">
+<div style="max-width:580px;margin:0 auto;">
+  <div style="background:linear-gradient(135deg,#3483fa,#2968d6);border-radius:16px 16px 0 0;padding:26px 28px;">
+    <div style="font-size:13px;color:#dbe8ff;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;">📈 PrecioML</div>
+    <h1 style="color:#fff;font-size:21px;margin:0;font-weight:700;">Tu resumen semanal</h1>
+  </div>
+  <div style="background:#fff;border-radius:0 0 16px 16px;padding:26px 28px;box-shadow:0 4px 20px rgba(20,30,60,0.06);">
+    <p style="font-size:14px;color:#555;margin:0 0 18px;">Así está hoy el estado de tus <strong>${totalTracked}</strong> productos trackeados:</p>
+    ${savedBlock}
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">${rows}</table>
+    <p style="font-size:12px;color:#9aa1ab;margin:22px 0 0;text-align:center;line-height:1.5;">Tocá la imagen o el título de cualquier producto para abrirlo en MercadoLibre.<br/>Abrí la extensión para ver el detalle completo, editar alertas o comparar precios.</p>
+  </div>
+  <div style="text-align:center;padding:18px 0;font-size:11px;color:#9aa1ab;">
+    Enviado por <a href="https://precioml-backend.vercel.app" style="color:#3483fa;text-decoration:none;">PrecioML</a>
+  </div>
 </div>
 </body></html>`;
 }
