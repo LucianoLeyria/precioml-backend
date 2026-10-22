@@ -10,19 +10,14 @@ const redis = new Redis({
 
 const HISTORY_TTL = 400 * 24 * 3600;
 
-async function getPremiumData(id, email) {
-  let raw = await redis.get('pml:premium:' + id);
-  if (!raw && email) {
-    const linkedId = await redis.get('pml:premium:email:' + email.toLowerCase());
-    if (linkedId) {
-      raw = await redis.get('pml:premium:' + linkedId);
-      if (raw) {
-        const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        await redis.set('pml:premium:' + id, JSON.stringify({ ...data, migratedFromEmail: email, migratedAt: Date.now() }));
-      }
-    }
-  }
-  return raw;
+// SEGURIDAD: antes, si el id no tenia premium pero se mandaba ?email=X, se
+// migraba el premium del installationId asociado a ese email a este id. Eso
+// permitia obtener Premium gratis conociendo solo el email de alguien que
+// pago (el email no se verifica). Se quito la migracion automatica por
+// email; la recuperacion al reinstalar requiere un flujo verificado (codigo
+// por mail) que todavia no existe.
+async function getPremiumData(id) {
+  return redis.get('pml:premium:' + id);
 }
 
 export default async function handler(req, res) {
@@ -36,7 +31,7 @@ export default async function handler(req, res) {
     const { id, historyData } = req.body || {};
     if (!id || !historyData) return res.status(400).json({ error: 'id y historyData requeridos' });
     try {
-      const raw = await getPremiumData(id, null);
+      const raw = await getPremiumData(id);
       if (!raw) return res.status(403).json({ error: 'Solo usuarios premium' });
       const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
       const now = Date.now();
@@ -52,11 +47,11 @@ export default async function handler(req, res) {
   }
 
   // GET: verificar premium
-  const { id, email, restore } = req.query;
+  const { id, restore } = req.query;
   if (!id) return res.status(400).json({ error: 'id requerido' });
 
   try {
-    const raw = await getPremiumData(id, email || null);
+    const raw = await getPremiumData(id);
     if (!raw) return res.status(200).json({ premium: false });
 
     const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
