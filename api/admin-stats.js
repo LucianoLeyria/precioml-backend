@@ -338,13 +338,13 @@ function render(data){
   }else{
     h+='<div class="box">';
     h+='<div style="margin-bottom:12px"><input id="email-filter" class="email-search" oninput="filterEmails()" placeholder="Buscar email..."/><\/div>';
-    h+='<table><thead><tr><th>Email<\/th><th>Fuente<\/th><\/tr><\/thead><tbody>';
+    h+='<table><thead><tr><th>Email<\/th><th>Fuente<\/th><th>Registro<\/th><\/tr><\/thead><tbody>';
     emails.forEach(function(e){
       var src=e.sources.map(function(s){
         var cls=s==='premium'?'green':(s==='gratis'?'teal':'blue');
         return '<span class="pill '+cls+'">'+s+'<\/span>';
       }).join(' ');
-      h+='<tr class="email-row"><td style="font-size:13px">'+e.email+'<\/td><td>'+src+'<\/td><\/tr>';
+      h+='<tr class="email-row"><td style="font-size:13px">'+e.email+'<\/td><td>'+src+'<\/td><td style="color:#64748b">'+(e.firstSeen?fmt(e.firstSeen):'-')+'<\/td><\/tr>';
     });
     h+='<\/tbody><\/table><\/div>';
   }
