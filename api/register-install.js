@@ -4,22 +4,16 @@
 // la casilla "Guarda tu email para alertas gratis" del popup. No hay
 // endpoint separado para eso (register-email.js) para no sumar una funcion
 // mas al limite de 12 de Vercel Hobby.
-import { Redis } from '@upstash/redis';
-
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
-});
+import { redis, setCors, rateLimited, clientIp, INSTALL_ID_RE } from './_lib.js';
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  setCors(req, res, 'POST, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).end();
 
   const { id, isNewInstall, version, email } = req.body || {};
-  if (!id) return res.status(400).json({ error: 'id requerido' });
+  if (!id || !INSTALL_ID_RE.test(String(id))) return res.status(400).json({ error: 'id requerido' });
+  if (await rateLimited('ri:' + clientIp(req), 60, 3600)) return res.status(429).json({ error: 'Rate limit' });
 
   try {
     const now = Date.now();
@@ -32,7 +26,7 @@ export default async function handler(req, res) {
       version: version || 'unknown',
     };
 
-    const validEmail = typeof email === 'string' && email.includes('@') ? email.trim().toLowerCase() : null;
+    const validEmail = typeof email === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()) && email.length <= 200 ? email.trim().toLowerCase() : null;
     if (validEmail) {
       hashUpdate.email = validEmail;
       hashUpdate.emailSavedAt = now;
@@ -58,6 +52,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, isNew: isFirstTime === 1 });
   } catch (err) {
     console.error('[PrecioML] register-install error:', err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Error interno' });
   }
 }

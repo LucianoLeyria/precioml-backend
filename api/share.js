@@ -6,6 +6,7 @@
 // que se borro; el shareUrl viejo apuntaba ahi y por eso daba 404).
 import { kv } from '@vercel/kv';
 import { randomBytes } from 'crypto';
+import { setCors, rateLimited, clientIp, isMlUrl, ML_ID_RE, INSTALL_ID_RE } from './_lib.js';
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, function (c) {
@@ -108,8 +109,11 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const { installationId, productId, title, history, url } = req.body;
-  if (!installationId || installationId.length < 10) {
+  if (!INSTALL_ID_RE.test(String(installationId || ''))) {
     return res.status(400).json({ error: 'installationId invalido' });
+  }
+  if (await rateLimited('share:' + installationId, 20, 3600) || await rateLimited('share:ip:' + clientIp(req), 40, 3600)) {
+    return res.status(429).json({ error: 'Demasiados links, proba mas tarde.' });
   }
 
   const premiumRaw = await kv.get(`pml:premium:${installationId}`);
@@ -118,17 +122,21 @@ export default async function handler(req, res) {
   if (!isPremium) {
     return res.status(403).json({ error: 'Solo usuarios Premium pueden compartir historial' });
   }
-  if (!productId || !title || !Array.isArray(history) || history.length < 2) {
+  if (!ML_ID_RE.test(String(productId || '')) || !title || !Array.isArray(history) || history.length < 2) {
     return res.status(400).json({ error: 'Datos insuficientes' });
   }
+  const cleanHistory = history.slice(-90)
+    .filter(h => h && Number.isFinite(h.price) && h.price > 0 && Number.isFinite(h.date))
+    .map(h => ({ price: h.price, date: h.date }));
+  if (cleanHistory.length < 2) return res.status(400).json({ error: 'Datos insuficientes' });
 
   try {
     const slug = randomBytes(4).toString('hex');
     const shareData = {
       productId,
-      title: title.substring(0, 150),
-      history: history.slice(-90),
-      url: url || null,
+      title: String(title).substring(0, 150),
+      history: cleanHistory,
+      url: isMlUrl(url) ? url : null,
       createdAt: Date.now(),
     };
     await kv.set(`share:${slug}`, shareData, { ex: 60 * 60 * 24 * 30 });
