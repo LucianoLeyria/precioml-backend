@@ -406,12 +406,13 @@ export default async function handler(req, res) {
 
   const auth = req.headers['authorization'] || '';
 
-  // El envio del resumen semanal lo dispara la extension del propio usuario
-  // (no tiene el ADMIN_SECRET) — la proteccion real durante la POC es
-  // DIGEST_ALLOWED_EMAILS dentro de handleWeeklyDigest.
+  // El envio del resumen semanal ahora exige el ADMIN_SECRET (la extension
+  // 2.2.0+ ya no lo dispara; solo el dashboard, que manda el Bearer).
   if (req.method === 'POST') {
-    // El POST no lleva secreto; al menos limitamos cuanto se puede disparar.
     if (await rateLimited('digest:' + clientIp(req), 5, 3600)) return res.status(429).json({ error: 'Rate limit' });
+    if (!process.env.ADMIN_SECRET || auth !== `Bearer ${process.env.ADMIN_SECRET}`) {
+      return res.status(401).json({ error: 'No autorizado' });
+    }
     return handleWeeklyDigest(req, res);
   }
 
