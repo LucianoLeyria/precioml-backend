@@ -1,6 +1,7 @@
 // ARCHIVO: api/admin-stats.js
 // Sin auth header -> sirve el dashboard HTML
 // Con Authorization: Bearer <secret> -> retorna JSON con metricas completas
+import { rateLimited, clientIp } from './_lib.js';
 import { Redis } from '@upstash/redis';
 
 const redis = new Redis({
@@ -402,10 +403,9 @@ function render(data){
 </html>`;
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // Sin Access-Control-Allow-Origin: el dashboard es same-origin y la extension
+  // llama desde el background (host_permissions), asi que no necesitan CORS.
+  if (req.method === 'OPTIONS') return res.status(204).end();
 
   const auth = req.headers['authorization'] || '';
 
@@ -413,6 +413,8 @@ export default async function handler(req, res) {
   // (no tiene el ADMIN_SECRET) — la proteccion real durante la POC es
   // DIGEST_ALLOWED_EMAILS dentro de handleWeeklyDigest.
   if (req.method === 'POST') {
+    // El POST no lleva secreto; al menos limitamos cuanto se puede disparar.
+    if (await rateLimited('digest:' + clientIp(req), 5, 3600)) return res.status(429).json({ error: 'Rate limit' });
     return handleWeeklyDigest(req, res);
   }
 
