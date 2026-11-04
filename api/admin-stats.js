@@ -188,6 +188,33 @@ function periodKey(ts,period){
   return String(d.getUTCFullYear());
 }
 
+function pct(a,b){return b>0?Math.round((a/b)*100)+'%':'-';}
+
+function retentionTable(items){
+  var DAY=86400000, now=Date.now(), cohorts={};
+  (items||[]).forEach(function(it){
+    if(!it.installedAt) return;
+    var k=periodKey(it.installedAt,'week');
+    var c=cohorts[k]||(cohorts[k]={n:0,back1:0,e7:0,r7:0,e30:0,r30:0});
+    var span=(it.lastSeen||it.installedAt)-it.installedAt;
+    c.n++;
+    if(span>DAY) c.back1++;
+    if(it.installedAt+7*DAY<=now){c.e7++; if(span>=7*DAY) c.r7++;}
+    if(it.installedAt+30*DAY<=now){c.e30++; if(span>=30*DAY) c.r30++;}
+  });
+  var keys=Object.keys(cohorts).sort().reverse().slice(0,10);
+  if(keys.length===0) return '<div class="box"><p style="color:#64748b;font-size:13px">Sin datos<\/p><\/div>';
+  var h='<div class="box"><table><thead><tr><th>Semana (lunes)<\/th><th>Instalaciones<\/th><th>Volvieron (+1 dia)<\/th><th>Activos a 7 dias<\/th><th>Activos a 30 dias<\/th><\/tr><\/thead><tbody>';
+  keys.forEach(function(k){
+    var c=cohorts[k];
+    h+='<tr><td style="font-family:monospace">'+k+'<\/td><td>'+c.n+'<\/td><td>'+pct(c.back1,c.n)+' <span style="color:#64748b">('+c.back1+')<\/span><\/td><td>'+pct(c.r7,c.e7)+'<\/td><td>'+pct(c.r30,c.e30)+'<\/td><\/tr>';
+  });
+  h+='<\/tbody><\/table>';
+  h+='<p style="color:#64748b;font-size:12px;margin-top:12px;line-height:1.5">Activo = la instalacion volvio a abrir Chrome o la extension despues de ese plazo (ultima actividad registrada). Antes de la v2.2.4 la actividad solo se registraba al iniciar Chrome, asi que las cohortes viejas pueden subestimar el uso real.<\/p>';
+  h+='<\/div>';
+  return h;
+}
+
 function bucket(items,tsField,period,valField){
   var map={};
   (items||[]).forEach(function(it){
@@ -288,6 +315,9 @@ function render(data){
     '<div class="ag-item"><div class="ag-val">'+al.uniqueProducts+'<\/div><div class="ag-lbl">Productos<\/div><\/div>'+
     '<\/div><\/div>';
   h+='<\/div>';
+
+  h+='<div class="section-title">Retencion por cohorte (semana de instalacion)<\/div>';
+  h+=retentionTable(ins.items);
 
   h+='<div class="section-title">Version de la extension y productos mas trackeados<\/div>';
   h+='<div class="two">';
