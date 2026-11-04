@@ -1,7 +1,6 @@
 // ARCHIVO: api/admin-stats.js
 // Sin auth header -> sirve el dashboard HTML
 // Con Authorization: Bearer <secret> -> retorna JSON con metricas completas
-import { rateLimited, clientIp } from './_lib.js';
 import { Redis } from '@upstash/redis';
 
 const redis = new Redis({
@@ -173,16 +172,19 @@ function setPeriod(p){
 }
 
 function periodKey(ts,period){
-  var d=new Date(ts);
+  // Hora de Argentina (UTC-3, sin horario de verano): se corre el timestamp
+  // 3hs y se usan getters UTC, asi un evento a las 22:00 locales cuenta en
+  // su dia y no en el siguiente.
+  var d=new Date(Number(ts)-3*3600*1000);
   if(period==='day') return d.toISOString().slice(0,10);
   if(period==='week'){
-    var day=new Date(d);
-    var wd=(day.getDay()+6)%7;
-    day.setDate(day.getDate()-wd);
+    var day=new Date(d.getTime());
+    var wd=(day.getUTCDay()+6)%7;
+    day.setUTCDate(day.getUTCDate()-wd);
     return day.toISOString().slice(0,10);
   }
   if(period==='month') return d.toISOString().slice(0,7);
-  return String(d.getFullYear());
+  return String(d.getUTCFullYear());
 }
 
 function bucket(items,tsField,period,valField){
@@ -400,19 +402,17 @@ function render(data){
 </html>`;
 
 export default async function handler(req, res) {
-  // Sin Access-Control-Allow-Origin: el dashboard es same-origin y la extension
-  // llama desde el background (host_permissions), asi que no necesitan CORS.
-  if (req.method === 'OPTIONS') return res.status(204).end();
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   const auth = req.headers['authorization'] || '';
 
-  // El envio del resumen semanal ahora exige el ADMIN_SECRET (la extension
-  // 2.2.0+ ya no lo dispara; solo el dashboard, que manda el Bearer).
+  // El envio del resumen semanal lo dispara la extension del propio usuario
+  // (no tiene el ADMIN_SECRET) — la proteccion real durante la POC es
+  // DIGEST_ALLOWED_EMAILS dentro de handleWeeklyDigest.
   if (req.method === 'POST') {
-    if (await rateLimited('digest:' + clientIp(req), 5, 3600)) return res.status(429).json({ error: 'Rate limit' });
-    if (!process.env.ADMIN_SECRET || auth !== `Bearer ${process.env.ADMIN_SECRET}`) {
-      return res.status(401).json({ error: 'No autorizado' });
-    }
     return handleWeeklyDigest(req, res);
   }
 
