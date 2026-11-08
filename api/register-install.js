@@ -28,10 +28,11 @@ export default async function handler(req, res) {
     // Verificar si ya estaba registrado (sadd devuelve 1 si es nuevo, 0 si ya existia)
     const isFirstTime = await redis.sadd('pml:installs', id);
 
-    const hashUpdate = {
-      lastSeen: now,
-      version: version || 'unknown',
-    };
+    const hashUpdate = { lastSeen: now };
+    // Solo se pisa la version si viene en el pedido: guardar un email manda
+    // solo {id, email} y antes eso dejaba la version en "unknown".
+    if (version) hashUpdate.version = version;
+    else if (isFirstTime === 1) hashUpdate.version = 'unknown';
 
     const validEmail = typeof email === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()) && email.length <= 200 ? email.trim().toLowerCase() : null;
     if (validEmail) {
