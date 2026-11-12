@@ -63,7 +63,14 @@ export default async function handler(req, res) {
     if (!paymentId) return res.status(200).end();
 
     const payment = new Payment(mp);
-    const paymentData = await payment.get({ id: paymentId });
+    let paymentData;
+    try {
+      paymentData = await payment.get({ id: paymentId });
+    } catch (e) {
+      // Pago inexistente (ej: "Simular notificación" de MP): no reintentar
+      if (e?.status === 404) return res.status(200).end();
+      throw e;
+    }
 
     if (paymentData.status !== 'approved') return res.status(200).end();
 
