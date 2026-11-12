@@ -13,7 +13,9 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN,
 });
 
-const BASE = 'https://precioml-backend.vercel.app';
+// URL pública del backend (para el back_url de MercadoPago). En el nuevo hosting
+// se define con la variable PUBLIC_URL.
+const BASE = process.env.PUBLIC_URL || 'https://precioml-backend.vercel.app';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');

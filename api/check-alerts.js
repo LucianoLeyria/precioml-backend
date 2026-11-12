@@ -6,7 +6,7 @@ import { kv } from '@vercel/kv';
 
 const ML_API = 'https://api.mercadolibre.com/items';
 const ML_OAUTH_TOKEN_URL = 'https://api.mercadolibre.com/oauth/token';
-const ML_REDIRECT_URI = 'https://precioml-backend.vercel.app/api/check-alerts';
+const ML_REDIRECT_URI = (process.env.PUBLIC_URL || 'https://precioml-backend.vercel.app') + '/api/check-alerts';
 const RESEND_API = 'https://api.resend.com/emails';
 const FROM_EMAIL = 'PrecioML Alertas <alertas@precioml.crecimientoinsta.com>';
 
@@ -200,7 +200,7 @@ ${alert.url ? `<a href="${escHtml(alert.url)}" style="display:block;background:#
 <p style="font-size:12px;color:#aaa;margin:16px 0 0;text-align:center;">Esta alerta ya fue desactivada. Crea una nueva desde la extension si queres seguir trackeando.</p>
 </div>
 <div style="text-align:center;padding:16px;font-size:11px;color:#aaa;">
-Enviado por <a href="https://precioml-backend.vercel.app" style="color:#3483fa;text-decoration:none;">PrecioML</a>
+Enviado por <a href="${process.env.PUBLIC_URL || 'https://precioml-backend.vercel.app'}" style="color:#3483fa;text-decoration:none;">PrecioML</a>
 </div>
 </div>
 </body></html>`;
@@ -251,7 +251,7 @@ ${alert.url ? `<a href="${escHtml(alert.url)}" style="display:block;background:#
 <p style="font-size:12px;color:#aaa;margin:16px 0 0;text-align:center;">Esta alerta sigue activa, te avisamos de nuevo si vuelve a cambiar. Desactivala desde la extension cuando quieras.</p>
 </div>
 <div style="text-align:center;padding:16px;font-size:11px;color:#aaa;">
-Enviado por <a href="https://precioml-backend.vercel.app" style="color:#3483fa;text-decoration:none;">PrecioML</a>
+Enviado por <a href="${process.env.PUBLIC_URL || 'https://precioml-backend.vercel.app'}" style="color:#3483fa;text-decoration:none;">PrecioML</a>
 </div>
 </div>
 </body></html>`;

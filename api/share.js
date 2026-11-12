@@ -26,6 +26,7 @@ function renderSharePage(data) {
   var min = prices.length ? Math.min.apply(null, prices) : null;
   var max = prices.length ? Math.max.apply(null, prices) : null;
   var url = data.url ? escapeHtml(data.url) : null;
+  var home = escapeHtml(process.env.PUBLIC_URL || 'https://precioml-backend.vercel.app');
 
   function ars(n) {
     return n === null || n === undefined ? '-' : '$' + Math.round(n).toLocaleString('es-AR');
@@ -69,7 +70,7 @@ function renderSharePage(data) {
 '</div>' +
 '<div class="box"><h3>Evolucion del precio<\/h3><canvas id="chart"><\/canvas></div>' +
 (url ? '<a class="cta" href="' + url + '" target="_blank" rel="noopener">Ver producto en MercadoLibre<\/a>' : '') +
-'<div class="footer">Historial trackeado con <a href="https://precioml-backend.vercel.app" target="_blank">PrecioML<\/a>, extension gratis para Chrome<\/div>' +
+'<div class="footer">Historial trackeado con <a href="' + home + '" target="_blank">PrecioML<\/a>, extension gratis para Chrome<\/div>' +
 '</div>' +
 '<script>' +
 'new Chart(document.getElementById("chart"),{type:"line",data:{labels:' + JSON.stringify(labels) + ',datasets:[{label:"Precio",data:' + JSON.stringify(prices) + ',borderColor:"#3483fa",backgroundColor:"rgba(52,131,250,.12)",fill:true,tension:.25,pointRadius:2}]},options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#64748b"},grid:{color:"#1e293b"}},y:{ticks:{color:"#64748b"},grid:{color:"#334155"}}}}});' +

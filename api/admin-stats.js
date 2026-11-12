@@ -833,7 +833,7 @@ function digestBuildHtml(items, totalTracked, totalSaved) {
     <p style="font-size:12px;color:#9aa1ab;margin:22px 0 0;text-align:center;line-height:1.5;">Tocá la imagen o el título de cualquier producto para abrirlo en MercadoLibre.<br/>Abrí la extensión para ver el detalle completo, editar alertas o comparar precios.</p>
   </div>
   <div style="text-align:center;padding:18px 0;font-size:11px;color:#9aa1ab;">
-    Enviado por <a href="https://precioml-backend.vercel.app" style="color:#3483fa;text-decoration:none;">PrecioML</a>
+    Enviado por <a href="${process.env.PUBLIC_URL || 'https://precioml-backend.vercel.app'}" style="color:#3483fa;text-decoration:none;">PrecioML</a>
   </div>
 </div>
 </body></html>`;
