@@ -1,0 +1,27 @@
+# Blueprint de Render (render.com). Si usás Render: New + -> Blueprint -> elegí el repo.
+# Los valores con sync:false los cargás vos en el panel; no se guardan en el repo.
+services:
+  - type: web
+    name: precioml-backend
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: PUBLIC_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MP_ACCESS_TOKEN
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: ADMIN_SECRET
+        sync: false
