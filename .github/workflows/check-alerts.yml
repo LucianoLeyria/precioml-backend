@@ -11,8 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Call check-alerts endpoint
+        env:
+          # Configurar en GitHub: Settings -> Secrets and variables -> Actions
+          #   Variables: BACKEND_URL   (ej: https://precioml-backend.onrender.com)
+          #   Secrets:   CRON_SECRET   (el mismo valor que en el hosting)
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
         run: |
-          curl -s -o /dev/null -w "%{http_code}" \
+          # -f hace fallar el job si el servidor responde 4xx/5xx (antes quedaba "verde" igual).
+          # --max-time 120: en el plan gratis de Render el primer pedido puede tardar ~50 s en despertar.
+          curl -fsS --max-time 120 \
             -X POST \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            https://precioml-backend.vercel.app/api/check-alerts
+            "$BACKEND_URL/api/check-alerts"
